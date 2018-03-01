@@ -157,7 +157,7 @@ class NexentaNfsDriver(nfs.NfsDriver):
             if getattr(self.configuration,
                        self.driver_prefix + '_sparsed_volumes'):
                 self._create_sparsed_file(
-                    self.local_path(share_path), volume_size)
+                    self.local_path(volume), volume_size)
             else:
                 url = 'storage/filesystems/%s' % (
                     '%2F'.join([pool, fs, volume['name']]))
@@ -168,7 +168,7 @@ class NexentaNfsDriver(nfs.NfsDriver):
                     self.nef.put(url, {'compressionMode': 'off'})
                 try:
                     self._create_regular_file(
-                        self.local_path(share_path), volume_size)
+                        self.local_path(volume), volume_size)
                 finally:
                     if compression != 'off':
                         # Backup default compression value if it was changed.
@@ -397,7 +397,7 @@ class NexentaNfsDriver(nfs.NfsDriver):
         self._ensure_share_mounted(share_path)
         if self.sparsed_volumes:
             self._execute('truncate', '-s', '%sG' % new_size,
-                          self.local_path(share_path),
+                          self.local_path(volume),
                           run_as_root=self._execute_as_root)
         else:
             block_size_mb = 1
@@ -406,7 +406,7 @@ class NexentaNfsDriver(nfs.NfsDriver):
             self._execute(
                 'dd', 'if=/dev/zero',
                 'seek=%d' % (volume['size'] * units.Gi / block_size_mb),
-                'of=%s' % self.local_path(share_path),
+                'of=%s' % self.local_path(volume),
                 'bs=%dM' % block_size_mb,
                 'count=%d' % block_count,
                 run_as_root=True)
@@ -501,11 +501,13 @@ class NexentaNfsDriver(nfs.NfsDriver):
                                 '%(volume_name)s@%(name)s'), snapshot)
             raise
 
-    def local_path(self, share_path):
+    def local_path(self, volume):
         """Get volume path (mounted locally fs path) for given volume.
 
         :param volume: volume reference
         """
+        share_path = self._get_share_path(
+            self.nas_host, self.share, volume['name'])
         return os.path.join(self._get_mount_point_for_share(share_path),
                             'volume')
 

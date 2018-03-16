@@ -150,7 +150,7 @@ class NexentaNfsDriver(nfs.NfsDriver):
         share_path = self._get_share_path(
             self.nas_host, self.share, volume['name'])
         try:
-            self._share_folder(fs, volume['name'])
+            # self._share_folder(fs, volume['name'])
             self._ensure_share_mounted(share_path)
 
             volume_size = volume['size']
@@ -369,15 +369,17 @@ class NexentaNfsDriver(nfs.NfsDriver):
                     data = self.nef.get(url)
                     if data['clones']:
                         snap_map[data['creationTxg']] = snap['path']
-                snap = snap_map[max(snap_map)]
-                url = 'storage/snapshots/%s' % urllib.parse.quote_plus(snap)
-                clone = self.nef.get(url)['clones'][0]
-                url = 'storage/filesystems/%s/promote' % (
-                    urllib.parse.quote_plus(clone))
-                self.nef.post(url)
-                url = 'storage/filesystems/%s?snapshots=true' % '%2F'.join(
-                    [pool, fs, volume['name']])
-                self.nef.delete(url)
+                if snap_map:
+                    snap = snap_map[max(snap_map)]
+                    url = 'storage/snapshots/%s' % urllib.parse.quote_plus(
+                        snap)
+                    clone = self.nef.get(url)['clones'][0]
+                    url = 'storage/filesystems/%s/promote' % (
+                        urllib.parse.quote_plus(clone))
+                    self.nef.post(url)
+                    url = 'storage/filesystems/%s?snapshots=true' % '%2F'.join(
+                        [pool, fs, volume['name']])
+                    self.nef.delete(url)
             else:
                 raise
         if origin and 'clone' in origin:
@@ -451,27 +453,28 @@ class NexentaNfsDriver(nfs.NfsDriver):
         volume['provider_location'] = snapshot_vol['provider_location']
 
         pool, fs = self._get_share_datasets(self.share)
-        dataset_path = '%s/%s' % (pool, fs)
+        # dataset_path = '%s/%s' % (pool, fs)
         fs_path = '%2F'.join([pool, fs, snapshot_vol['name']])
         url = ('storage/snapshots/%s/clone') % (
             '@'.join([fs_path, snapshot['name']]))
         path = '/'.join([pool, fs, volume['name']])
         data = {'targetPath': path}
         self.nef.post(url, data)
+        self.nef.post('services/nfs/refresh')
 
-        try:
-            self._share_folder(fs, volume['name'])
-        except exception.NexentaException:
-            try:
-                url = ('storage/filesystems/') % (
-                    '%2F'.join([pool, fs, volume['name']]))
-                self.nef.delete(url)
-            except exception.NexentaException:
-                LOG.warning(_LW('Cannot destroy cloned filesystem: '
-                                '%(vol)s/%(filesystem)s'),
-                            {'vol': dataset_path,
-                             'filesystem': volume['name']})
-            raise
+        # try:
+        #     self._share_folder(fs, volume['name'])
+        # except exception.NexentaException:
+        #     try:
+        #         url = ('storage/filesystems/') % (
+        #             '%2F'.join([pool, fs, volume['name']]))
+        #         self.nef.delete(url)
+        #     except exception.NexentaException:
+        #         LOG.warning(_LW('Cannot destroy cloned filesystem: '
+        #                         '%(vol)s/%(filesystem)s'),
+        #                     {'vol': dataset_path,
+        #                      'filesystem': volume['name']})
+        #     raise
         if volume['size'] > snapshot['volume_size']:
             new_size = volume['size']
             volume['size'] = snapshot['volume_size']
@@ -493,6 +496,22 @@ class NexentaNfsDriver(nfs.NfsDriver):
         self.create_snapshot(snapshot)
         try:
             pl = self.create_volume_from_snapshot(volume, snapshot)
+            # pool, fs = self._get_share_datasets(self.share)
+            # dataset_path = '%s/%s' % (pool, fs)
+            # try:
+            #     self._share_folder(fs, volume['name'])
+            # except exception.NexentaException:
+            #     try:
+            #         url = ('storage/filesystems/') % (
+            #             '%2F'.join([pool, fs, volume['name']]))
+            #         self.nef.delete(url)
+            #     except exception.NexentaException:
+            #         LOG.warning(_LW('Cannot destroy cloned filesystem: '
+            #                         '%(vol)s/%(filesystem)s'),
+            #                     {'vol': dataset_path,
+            #                      'filesystem': volume['name']})
+            #     raise
+
             return pl
         except exception.NexentaException:
             LOG.error(_LE('Volume creation failed, deleting created snapshot '
